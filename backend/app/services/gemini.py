@@ -19,16 +19,50 @@ if GEMINI_API_KEY:
         print(f"[Gemini] Error configuring google.generativeai: {e}")
 
 
+GEMINI_MODEL_CANDIDATES = [
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-pro-latest",
+]
+
+
 def _get_gemini_model():
-    """Returns an active Gemini model, prioritizing gemini-2.5-flash and gemini-flash-latest"""
+    """Returns an active Gemini model instance, prioritizing working flash models."""
     if not genai_client:
         return None
-    for model_name in ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]:
+    for model_name in GEMINI_MODEL_CANDIDATES:
         try:
             return genai_client.GenerativeModel(model_name)
         except Exception:
             continue
-    return genai_client.GenerativeModel("gemini-2.5-flash")
+    return genai_client.GenerativeModel("gemini-flash-latest")
+
+
+def _generate_gemini_content(prompt: str) -> Optional[str]:
+    """
+    Attempts content generation across candidate models in priority order.
+    Automatically catches rate limit (429), not-found (404), or other model errors
+    and fails over to the next candidate model before returning None.
+    """
+    if not genai_client or not GEMINI_API_KEY:
+        return None
+
+    last_error = None
+    for model_name in GEMINI_MODEL_CANDIDATES:
+        try:
+            model = genai_client.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            last_error = e
+            print(f"[Gemini] Candidate model '{model_name}' failed: {e}. Trying next candidate...")
+            continue
+
+    print(f"[Gemini] All candidate models failed. Last error: {last_error}")
+    return None
 
 
 def _clean_json_response(raw_text: str) -> str:
@@ -122,7 +156,6 @@ def analyze_resume(resume_text: str) -> Dict[str, Any]:
     """
     if genai_client and GEMINI_API_KEY:
         try:
-            model = _get_gemini_model()
             prompt = f"""
             You are an expert technical recruiter and resume reviewer. Analyze the following resume text and provide a comprehensive structured review in valid JSON only.
 
@@ -148,10 +181,11 @@ def analyze_resume(resume_text: str) -> Dict[str, Any]:
               ]
             }}
             """
-            response = model.generate_content(prompt)
-            clean_json = _clean_json_response(response.text)
-            parsed = json.loads(clean_json)
-            return parsed
+            response_text = _generate_gemini_content(prompt)
+            if response_text:
+                clean_json = _clean_json_response(response_text)
+                parsed = json.loads(clean_json)
+                return parsed
         except Exception as e:
             print(f"[Gemini] Error analyzing resume with API: {e}. Using intelligent fallback parser.")
 
@@ -321,9 +355,10 @@ def generate_interview_question(
               "expected_points": ["Key expected concept 1", "Key concept 2", "Key concept 3"]
             }}
             """
-            response = model.generate_content(prompt)
-            clean_json = _clean_json_response(response.text)
-            return json.loads(clean_json)
+            response_text = _generate_gemini_content(prompt)
+            if response_text:
+                clean_json = _clean_json_response(response_text)
+                return json.loads(clean_json)
         except Exception as e:
             print(f"[Gemini] Error generating question with API: {e}. Using conversational smart pool fallback.")
 
@@ -494,6 +529,8 @@ def evaluate_answer(
     user_answer: str,
     role: str = "Software Engineer",
     duration_seconds: int = 45,
+    sample_answer: str = "",
+    explanation: str = "",
 ) -> Dict[str, Any]:
     """
     Evaluates user interview answer.
@@ -514,96 +551,134 @@ def evaluate_answer(
 
     if genai_client and GEMINI_API_KEY:
         try:
-            model = _get_gemini_model()
+            ref_info = ""
+            if sample_answer:
+                ref_info += f"\nREFERENCE / SAMPLE ANSWER:\n{sample_answer}"
+            if explanation:
+                ref_info += f"\nCONCEPT EXPLANATION & KEY CONCEPTS:\n{explanation}"
+
             prompt = f"""
             You are a senior technical interviewer for a {role} position.
-            Evaluate the candidate's answer to the following question.
+            Evaluate the candidate's answer to the following practice interview question.
 
             QUESTION ({category}, Difficulty: {difficulty}):
             "{question_text}"
+            {ref_info}
 
             CANDIDATE ANSWER:
             "{user_answer}"
 
+            Evaluation Guidelines:
+            1. Assess technical accuracy, conceptual correctness, and relevance.
+            2. If reference / sample answer is provided, check whether the candidate captures the key points or core concepts.
+            3. DO NOT penalize conciseness! A clear, concise, accurate answer (even 1-2 sentences) SHOULD receive a high score (8.0 to 10.0).
+            4. If the candidate correctly states the difference, definition, or premise, score MUST be >= 7.5.
+            5. Only assign a low or failing score (< 6.5) if the answer is factually incorrect, completely irrelevant, or severely misleading.
+
             Evaluate thoroughly and return valid JSON ONLY with this exact schema:
             {{
-              "score": <float between 1 and 10>,
-              "technical_correctness": <float between 1 and 10>,
-              "relevance": <float between 1 and 10>,
-              "completeness": <float between 1 and 10>,
+              "score": <float between 1.0 and 10.0, where >= 6.5 is passing/correct>,
+              "technical_correctness": <float between 1.0 and 10.0>,
+              "relevance": <float between 1.0 and 10.0>,
+              "completeness": <float between 1.0 and 10.0>,
               "strengths": ["Clear strength 1", "Strength 2"],
-              "weaknesses": ["Weakness or missing concept 1", "Weakness 2"],
+              "weaknesses": ["Weakness or missing concept 1"],
               "better_answer": "A concise, industry-standard model answer that scores 10/10.",
               "improvement_suggestion": "Actionable advice on how to improve this answer."
             }}
             """
-            response = model.generate_content(prompt)
-            clean_json = _clean_json_response(response.text)
-            eval_data = json.loads(clean_json)
+            response_text = _generate_gemini_content(prompt)
+            if response_text:
+                clean_json = _clean_json_response(response_text)
+                eval_data = json.loads(clean_json)
 
-            # Merge communication analysis
-            eval_data["filler_words_count"] = comm_analysis["filler_words_count"]
-            eval_data["communication_score"] = comm_analysis["communication_score"]
-            eval_data["communication_feedback"] = comm_analysis["suggestions"]
-            return eval_data
+                # Merge communication analysis and ensure valid numeric types
+                raw_score = float(eval_data.get("score", 7.5))
+                eval_data["score"] = round(raw_score, 1)
+                eval_data["technical_correctness"] = round(float(eval_data.get("technical_correctness", raw_score)), 1)
+                eval_data["relevance"] = round(float(eval_data.get("relevance", 8.0)), 1)
+                eval_data["completeness"] = round(float(eval_data.get("completeness", 7.5)), 1)
+                eval_data["strengths"] = eval_data.get("strengths") or ["Accurately identified core technical principles."]
+                eval_data["weaknesses"] = eval_data.get("weaknesses") or ["Could expand on low-level memory mechanics or trade-offs."]
+                eval_data["better_answer"] = eval_data.get("better_answer") or sample_answer or "A concise, accurate answer."
+                eval_data["improvement_suggestion"] = eval_data.get("improvement_suggestion") or "Great answer; consider providing concrete examples."
+                eval_data["filler_words_count"] = comm_analysis["filler_words_count"]
+                eval_data["communication_score"] = comm_analysis["communication_score"]
+                eval_data["communication_feedback"] = comm_analysis["suggestions"]
+                return eval_data
         except Exception as e:
-            print(f"[Gemini] Error evaluating answer with API: {e}. Using algorithmic evaluator.")
+            print(f"[Gemini] Error evaluating answer with API: {e}. Using intelligent semantic fallback evaluator.")
 
     # Algorithmic fallback evaluator
-    words = user_answer.strip().split()
+    user_lower = user_answer.lower().strip()
+    words = re.findall(r"\b[A-Za-z0-9_']+\b", user_lower)
     word_count = len(words)
+    stop_words = {
+        "a", "an", "the", "in", "on", "of", "and", "or", "is", "are", "was", "were",
+        "to", "for", "with", "it", "that", "this", "by", "from", "be", "as", "at",
+        "can", "could", "have", "has", "had", "such", "than", "but", "so", "which"
+    }
 
-    # Keywords heuristic based on category
+    user_tokens = set(w for w in words if len(w) > 2 and w not in stop_words)
+
+    # Compare against sample_answer and explanation if provided
+    ref_combined = f"{sample_answer} {explanation}".lower().strip()
+    ref_tokens = set(w for w in re.findall(r"\b[A-Za-z0-9_']+\b", ref_combined) if len(w) > 2 and w not in stop_words)
+    overlap = user_tokens.intersection(ref_tokens) if ref_tokens else set()
+    overlap_ratio = len(overlap) / max(len(ref_tokens), 1) if ref_tokens else 0.0
+
+    # Category keywords heuristic
     keywords = {
-        "python": ["mutable", "immutable", "reference", "gil", "generator", "decorator", "list", "dict", "tuple"],
-        "sql": ["join", "index", "b-tree", "acid", "primary key", "foreign key", "performance", "query"],
-        "react": ["virtual dom", "state", "props", "hook", "reconciliation", "render", "component", "effect"],
-        "fastapi": ["async", "await", "pydantic", "starlette", "concurrency", "validation", "dependency"],
-        "dsa": ["pointer", "complexity", "o(n)", "o(1)", "space", "time", "node", "hash", "array"],
-        "system design": ["scale", "cache", "redis", "sharding", "load balancer", "rate limit", "latency"],
-        "hr": ["situation", "task", "action", "result", "team", "learned", "communication", "collaborate"]
+        "python": ["mutable", "immutable", "reference", "gil", "generator", "decorator", "list", "dict", "tuple", "set", "memory", "function", "class", "object", "yield", "async", "await", "self"],
+        "sql": ["join", "index", "b-tree", "acid", "primary key", "foreign key", "performance", "query", "select", "group by", "having", "where", "table", "transaction", "view", "normalize"],
+        "react": ["virtual dom", "state", "props", "hook", "reconciliation", "render", "component", "effect", "memo", "context", "jsx", "fiber", "lifecycle"],
+        "fastapi": ["async", "await", "pydantic", "starlette", "concurrency", "validation", "dependency", "injection", "route", "endpoint", "schema"],
+        "dsa": ["pointer", "complexity", "o(n)", "o(1)", "space", "time", "node", "hash", "array", "tree", "graph", "stack", "queue", "binary", "dynamic", "recursion", "divide"],
+        "system design": ["scale", "cache", "redis", "sharding", "load balancer", "rate limit", "latency", "throughput", "cdn", "database", "replica", "microservices"],
+        "hr": ["situation", "task", "action", "result", "team", "learned", "communication", "collaborate", "challenge", "conflict", "growth"]
     }
 
     cat_keys = keywords.get(category.lower(), ["concept", "approach", "implementation", "solution"])
-    matched = [k for k in cat_keys if k in user_answer.lower()]
+    matched = [k for k in cat_keys if k in user_lower]
 
-    if word_count < 10:
+    if word_count < 4:
         score = 3.0
         tech_score = 3.0
-        relevance = 4.0
-        completeness = 2.5
-        strengths = ["Attempted to answer the question."]
-        weaknesses = ["Answer is severely incomplete.", "Lacks core technical explanation and depth."]
-        suggestion = "Elaborate with specific mechanisms, definitions, and code examples."
-    elif word_count < 30:
-        score = 5.5
-        tech_score = 5.0
-        relevance = 6.0
-        completeness = 5.0
-        strengths = ["Identified basic premise of the topic."]
-        weaknesses = ["Missed critical edge cases and internal workings."]
-        suggestion = "Structure your answer by explaining what it is, how it works under the hood, and a practical use case."
-    elif len(matched) >= 3 or word_count >= 80:
-        score = 8.5
-        tech_score = 8.5
+        relevance = 3.0
+        completeness = 2.0
+        strengths = ["Attempted to answer."]
+        weaknesses = ["Answer is too brief to demonstrate technical depth."]
+        suggestion = "Provide a complete explanation with definitions, mechanisms, and examples."
+    elif (len(overlap) >= 3 or overlap_ratio >= 0.18) or (len(matched) >= 2 and word_count >= 8):
+        score = 8.8
+        tech_score = 9.0
         relevance = 9.0
-        completeness = 8.0
+        completeness = 8.5
+        found_concepts = list(overlap)[:3] if overlap else matched[:3]
         strengths = [
-            "Good technical terminology and accurate conceptual understanding.",
-            f"Effectively addressed core principles ({', '.join(matched[:3])})."
+            f"Accurately addressed key concepts ({', '.join(found_concepts)}).",
+            "Clear and technically sound explanation."
         ]
-        weaknesses = ["Could highlight potential tradeoffs or scalability considerations more prominently."]
-        suggestion = "Conclude with real-world architectural tradeoffs to demonstrate senior-level mastery."
+        weaknesses = ["Could expand with real-world edge cases or memory/trade-off details."]
+        suggestion = "Mention underlying memory mechanisms or practical examples to make your answer stand out."
+    elif len(overlap) >= 1 or len(matched) >= 1 or word_count >= 15:
+        score = 7.5
+        tech_score = 7.5
+        relevance = 8.0
+        completeness = 7.0
+        strengths = ["Identified core fundamentals of the topic.", "Relevant conceptual direction."]
+        weaknesses = ["Could include more specific technical terminology or concrete mechanisms."]
+        suggestion = "Elaborate on how the concept works internally and provide a practical use case."
     else:
-        score = 7.0
-        tech_score = 7.0
-        relevance = 7.5
-        completeness = 6.5
-        strengths = ["Sound understanding of the fundamentals.", "Direct and relevant answer."]
-        weaknesses = ["Could include deeper architectural details or concrete examples."]
-        suggestion = "Mention performance implications and concrete code or query patterns."
+        score = 5.0
+        tech_score = 4.5
+        relevance = 5.5
+        completeness = 4.5
+        strengths = ["Attempted an explanation."]
+        weaknesses = ["Answer lacks key technical concepts and depth."]
+        suggestion = "Review the core terminology and explain both definition and practical applications."
 
-    better_answer = (
+    better_answer = sample_answer if sample_answer else (
         f"A comprehensive response for {category} starts with a clear definition, explains the underlying mechanism "
         f"(e.g., memory layout, concurrency models, or data structures), provides a code snippet or scenario, "
         f"and discusses edge cases and computational complexity."

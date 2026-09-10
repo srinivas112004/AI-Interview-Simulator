@@ -1,3 +1,5 @@
+import os
+import json
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, Base
 from app.models import User, Profile, PracticeQuestion, CodingProblem, Interview, InterviewQuestion, InterviewResponse, AIEvaluation, InterviewEvent, Report
@@ -51,8 +53,13 @@ def seed_database():
             db.add(demo_profile)
             db.commit()
 
-        # 2. Seed Practice Questions (9 Categories: Python, Java, JavaScript, React, FastAPI, SQL, DSA, DBMS, HR)
-        practice_data = [
+        # 2. Seed Practice Questions
+        practice_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "data", "practice_questions.json")
+        if os.path.exists(practice_file):
+            with open(practice_file, "r", encoding="utf-8") as f:
+                practice_data = json.load(f)
+        else:
+            practice_data = [
             # Python
             {
                 "category": "Python",
@@ -338,17 +345,30 @@ def seed_database():
             }
         ]
 
+        coding_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "data", "coding_problems.json")
+        if os.path.exists(coding_file):
+            with open(coding_file, "r", encoding="utf-8") as f:
+                coding_data = json.load(f)
+
         for c in coding_data:
             prob = CodingProblem(
                 title=c["title"],
                 slug=c["slug"],
                 difficulty=c["difficulty"],
                 category=c["category"],
+                pattern=c.get("pattern"),
+                strategy=c.get("strategy"),
+                identification=c.get("identification"),
+                reference=c.get("reference"),
+                leetcode_url=c.get("leetcode_url"),
+                gfg_url=c.get("gfg_url"),
+                youtube_url=c.get("youtube_url"),
+                companies=c.get("companies", []),
                 description=c["description"],
                 constraints=c["constraints"],
-                examples=c["examples"],
-                starter_templates=c["starter_templates"],
-                test_cases=c["test_cases"]
+                examples=c.get("examples", []),
+                starter_templates=c.get("starter_templates", {}),
+                test_cases=c.get("test_cases", [])
             )
             db.add(prob)
         db.commit()

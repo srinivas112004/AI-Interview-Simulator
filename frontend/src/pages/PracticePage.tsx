@@ -350,16 +350,27 @@ export const PracticePage: React.FC = () => {
             {attemptResult && (
               <div className="p-6 rounded-2xl bg-indigo-50/70 border border-indigo-100 space-y-4 animate-in fade-in">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">
-                    AI Feedback
-                  </span>
+                  <div className="flex items-center space-x-2.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">
+                      AI Feedback
+                    </span>
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold shadow-xs ${
+                        attemptResult.is_correct
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {attemptResult.is_correct ? 'Passed' : 'Needs Work'}
+                    </span>
+                  </div>
                   <span className="text-lg font-extrabold text-indigo-700">
                     Score: {attemptResult.score}/10
                   </span>
                 </div>
-                <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                <div className="text-xs text-slate-700 leading-relaxed font-medium whitespace-pre-line bg-white/80 p-4 rounded-xl border border-indigo-100/70 shadow-xs">
                   {attemptResult.feedback}
-                </p>
+                </div>
 
                 {activeQuestion.explanation && (
                   <div className="pt-3 border-t border-indigo-200/60">

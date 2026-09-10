@@ -133,17 +133,39 @@ def attempt_practice_question(
             detail="Question not found."
         )
 
-    # Evaluate answer
+    # Evaluate answer with Gemini AI + Reference ground truth
     eval_res = evaluate_answer(
         question_text=q.question_text,
         category=q.category,
         difficulty=q.difficulty,
         user_answer=attempt_in.user_answer,
+        sample_answer=q.sample_answer or "",
+        explanation=q.explanation or "",
     )
 
-    score = eval_res["score"]
+    score = float(eval_res.get("score", 7.0))
     is_correct = score >= 6.5
-    feedback = f"Score: {score}/10. {eval_res.get('improvement_suggestion', '')}"
+
+    feedback_parts = []
+    strengths = eval_res.get("strengths", [])
+    if strengths:
+        if isinstance(strengths, list):
+            feedback_parts.append("✓ Strengths:\n• " + "\n• ".join(strengths))
+        else:
+            feedback_parts.append(f"✓ Strengths:\n• {strengths}")
+
+    weaknesses = eval_res.get("weaknesses", [])
+    if weaknesses:
+        if isinstance(weaknesses, list):
+            feedback_parts.append("▲ Areas to Improve:\n• " + "\n• ".join(weaknesses))
+        else:
+            feedback_parts.append(f"▲ Areas to Improve:\n• {weaknesses}")
+
+    suggestion = eval_res.get("improvement_suggestion")
+    if suggestion:
+        feedback_parts.append(f"💡 Actionable Tip:\n{suggestion}")
+
+    feedback = "\n\n".join(feedback_parts) if feedback_parts else f"Score: {score}/10."
 
     attempt = PracticeAttempt(
         user_id=user.id,
