@@ -1,6 +1,6 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routes import (
@@ -32,6 +32,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Rewrite paths that omit /api prefix (e.g. /auth/login -> /api/auth/login)
+@app.middleware("http")
+async def auto_api_prefix_middleware(request: Request, call_next):
+    path = request.scope.get("path", "")
+    if not path.startswith("/api") and not path.startswith("/docs") and not path.startswith("/openapi.json") and path != "/":
+        common_prefixes = ["/auth", "/profile", "/resume", "/practice", "/coding", "/interviews", "/reports", "/analytics", "/admin"]
+        if any(path.startswith(cp) for cp in common_prefixes):
+            new_path = f"/api{path}"
+            request.scope["path"] = new_path
+            request.scope["raw_path"] = new_path.encode("utf-8")
+    return await call_next(request)
 
 # Configure CORS
 app.add_middleware(
