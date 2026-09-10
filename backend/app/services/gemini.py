@@ -1,6 +1,8 @@
 import os
 import json
 import re
+import signal
+import threading
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -20,11 +22,8 @@ if GEMINI_API_KEY:
 
 
 GEMINI_MODEL_CANDIDATES = [
-    "gemini-flash-latest",
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-pro-latest",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
 ]
 
 
@@ -40,9 +39,10 @@ def _get_gemini_model():
     return genai_client.GenerativeModel("gemini-flash-latest")
 
 
-def _generate_gemini_content(prompt: str) -> Optional[str]:
+def _generate_gemini_content(prompt: str, timeout_seconds: int = 12) -> Optional[str]:
     """
     Attempts content generation across candidate models in priority order.
+    Each model attempt is limited to timeout_seconds to avoid hanging on Render.
     Automatically catches rate limit (429), not-found (404), or other model errors
     and fails over to the next candidate model before returning None.
     """
@@ -51,14 +51,33 @@ def _generate_gemini_content(prompt: str) -> Optional[str]:
 
     last_error = None
     for model_name in GEMINI_MODEL_CANDIDATES:
-        try:
-            model = genai_client.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            last_error = e
-            print(f"[Gemini] Candidate model '{model_name}' failed: {e}. Trying next candidate...")
+        result_holder = [None]
+        error_holder = [None]
+
+        def _call_model():
+            try:
+                model = genai_client.GenerativeModel(model_name)
+                response = model.generate_content(prompt)
+                if response and response.text:
+                    result_holder[0] = response.text
+            except Exception as e:
+                error_holder[0] = e
+
+        thread = threading.Thread(target=_call_model, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout_seconds)
+
+        if thread.is_alive():
+            print(f"[Gemini] Model '{model_name}' timed out after {timeout_seconds}s. Trying next...")
+            last_error = TimeoutError(f"{model_name} timed out")
+            continue
+
+        if result_holder[0]:
+            return result_holder[0]
+
+        if error_holder[0]:
+            last_error = error_holder[0]
+            print(f"[Gemini] Candidate model '{model_name}' failed: {error_holder[0]}. Trying next candidate...")
             continue
 
     print(f"[Gemini] All candidate models failed. Last error: {last_error}")
