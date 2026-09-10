@@ -628,90 +628,22 @@ def evaluate_answer(
         except Exception as e:
             print(f"[Gemini] Error evaluating answer with API: {e}. Using intelligent semantic fallback evaluator.")
 
-    # Algorithmic fallback evaluator
-    user_lower = user_answer.lower().strip()
-    words = re.findall(r"\b[A-Za-z0-9_']+\b", user_lower)
-    word_count = len(words)
-    stop_words = {
-        "a", "an", "the", "in", "on", "of", "and", "or", "is", "are", "was", "were",
-        "to", "for", "with", "it", "that", "this", "by", "from", "be", "as", "at",
-        "can", "could", "have", "has", "had", "such", "than", "but", "so", "which"
-    }
-
-    user_tokens = set(w for w in words if len(w) > 2 and w not in stop_words)
-
-    # Compare against sample_answer and explanation if provided
-    ref_combined = f"{sample_answer} {explanation}".lower().strip()
-    ref_tokens = set(w for w in re.findall(r"\b[A-Za-z0-9_']+\b", ref_combined) if len(w) > 2 and w not in stop_words)
-    overlap = user_tokens.intersection(ref_tokens) if ref_tokens else set()
-    overlap_ratio = len(overlap) / max(len(ref_tokens), 1) if ref_tokens else 0.0
-
-    # Category keywords heuristic
-    keywords = {
-        "python": ["mutable", "immutable", "reference", "gil", "generator", "decorator", "list", "dict", "tuple", "set", "memory", "function", "class", "object", "yield", "async", "await", "self"],
-        "sql": ["join", "index", "b-tree", "acid", "primary key", "foreign key", "performance", "query", "select", "group by", "having", "where", "table", "transaction", "view", "normalize"],
-        "react": ["virtual dom", "state", "props", "hook", "reconciliation", "render", "component", "effect", "memo", "context", "jsx", "fiber", "lifecycle"],
-        "fastapi": ["async", "await", "pydantic", "starlette", "concurrency", "validation", "dependency", "injection", "route", "endpoint", "schema"],
-        "dsa": ["pointer", "complexity", "o(n)", "o(1)", "space", "time", "node", "hash", "array", "tree", "graph", "stack", "queue", "binary", "dynamic", "recursion", "divide"],
-        "system design": ["scale", "cache", "redis", "sharding", "load balancer", "rate limit", "latency", "throughput", "cdn", "database", "replica", "microservices"],
-        "hr": ["situation", "task", "action", "result", "team", "learned", "communication", "collaborate", "challenge", "conflict", "growth"]
-    }
-
-    cat_keys = keywords.get(category.lower(), ["concept", "approach", "implementation", "solution"])
-    matched = [k for k in cat_keys if k in user_lower]
-
-    if word_count < 4:
-        score = 3.0
-        tech_score = 3.0
-        relevance = 3.0
-        completeness = 2.0
-        strengths = ["Attempted to answer."]
-        weaknesses = ["Answer is too brief to demonstrate technical depth."]
-        suggestion = "Provide a complete explanation with definitions, mechanisms, and examples."
-    elif (len(overlap) >= 3 or overlap_ratio >= 0.18) or (len(matched) >= 2 and word_count >= 8):
-        score = 8.8
-        tech_score = 9.0
-        relevance = 9.0
-        completeness = 8.5
-        found_concepts = list(overlap)[:3] if overlap else matched[:3]
-        strengths = [
-            f"Accurately addressed key concepts ({', '.join(found_concepts)}).",
-            "Clear and technically sound explanation."
-        ]
-        weaknesses = ["Could expand with real-world edge cases or memory/trade-off details."]
-        suggestion = "Mention underlying memory mechanisms or practical examples to make your answer stand out."
-    elif len(overlap) >= 1 or len(matched) >= 1 or word_count >= 15:
-        score = 7.5
-        tech_score = 7.5
-        relevance = 8.0
-        completeness = 7.0
-        strengths = ["Identified core fundamentals of the topic.", "Relevant conceptual direction."]
-        weaknesses = ["Could include more specific technical terminology or concrete mechanisms."]
-        suggestion = "Elaborate on how the concept works internally and provide a practical use case."
-    else:
-        score = 5.0
-        tech_score = 4.5
-        relevance = 5.5
-        completeness = 4.5
-        strengths = ["Attempted an explanation."]
-        weaknesses = ["Answer lacks key technical concepts and depth."]
-        suggestion = "Review the core terminology and explain both definition and practical applications."
-
+    # Simple fallback — Gemini is the primary evaluator; if it fails, give a fair default
+    # instead of the harsh algorithmic evaluator
+    print(f"[Evaluate] Gemini unavailable, using fair default score for practice.")
     better_answer = sample_answer if sample_answer else (
-        f"A comprehensive response for {category} starts with a clear definition, explains the underlying mechanism "
-        f"(e.g., memory layout, concurrency models, or data structures), provides a code snippet or scenario, "
-        f"and discusses edge cases and computational complexity."
+        f"A comprehensive response should explain the core concept clearly with examples."
     )
 
     return {
-        "score": round(score, 1),
-        "technical_correctness": round(tech_score, 1),
-        "relevance": round(relevance, 1),
-        "completeness": round(completeness, 1),
-        "strengths": strengths,
-        "weaknesses": weaknesses,
+        "score": 7.0,
+        "technical_correctness": 7.0,
+        "relevance": 7.0,
+        "completeness": 7.0,
+        "strengths": ["Answer submitted successfully."],
+        "weaknesses": ["AI evaluation temporarily unavailable — please retry for detailed feedback."],
         "better_answer": better_answer,
-        "improvement_suggestion": suggestion,
+        "improvement_suggestion": "Try again in a moment for AI-powered detailed feedback.",
         "filler_words_count": comm_analysis["filler_words_count"],
         "communication_score": comm_analysis["communication_score"],
         "communication_feedback": comm_analysis["suggestions"],
