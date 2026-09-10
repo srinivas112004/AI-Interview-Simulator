@@ -148,7 +148,8 @@ export const reportService = {
   getReport: (id: number) => api.get<InterviewReport>(`/reports/${id}`).then((r) => r.data),
   downloadPdf: async (id: number) => {
     const token = localStorage.getItem('token');
-    const response = await axios.get(`/api/reports/${id}/pdf`, {
+    const baseUrl = import.meta.env.VITE_API_URL || '/api';
+    const response = await axios.get(`${baseUrl}/reports/${id}/pdf`, {
       responseType: 'blob',
       headers: { Authorization: `Bearer ${token}` },
     });
