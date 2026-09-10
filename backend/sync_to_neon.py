@@ -10,6 +10,13 @@ import os
 import json
 import argparse
 
+# Ensure utf-8 output on Windows console
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Add backend directory to sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -21,11 +28,11 @@ from app.auth import get_password_hash
 
 def sync_data(database_url: str):
     print("=" * 60)
-    print("🚀 AI INTERVIEW SIMULATOR - NEON DB SYNC UTILITY")
+    print("[SYNC] AI INTERVIEW SIMULATOR - NEON DB SYNC UTILITY")
     print("=" * 60)
 
     if not database_url:
-        print("❌ Error: No database URL provided.")
+        print("[ERROR] No database URL provided.")
         print("Usage: python backend/sync_to_neon.py \"<NEON_DATABASE_URL>\"")
         sys.exit(1)
 
@@ -37,19 +44,19 @@ def sync_data(database_url: str):
         engine = create_engine(
             database_url,
             pool_pre_ping=True,
-            connect_args={"connect_timeout": 15}
+            connect_args={"connect_timeout": 20}
         )
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        print("      ✅ Connected successfully!")
+        print("      [OK] Connected successfully to Neon PostgreSQL!")
     except Exception as e:
-        print(f"      ❌ Connection failed: {e}")
+        print(f"      [FAILED] Connection failed: {e}")
         sys.exit(1)
 
     # 2. Create Schema
     print("\n[2/5] Creating all database tables in Neon DB...")
     Base.metadata.create_all(bind=engine)
-    print("      ✅ Tables created / verified.")
+    print("      [OK] Tables created / verified.")
 
     Session = sessionmaker(bind=engine)
     db = Session()
@@ -77,9 +84,9 @@ def sync_data(database_url: str):
                     tags=p.get("tags", [])
                 ))
             db.commit()
-            print(f"      ✅ Inserted {len(practice_list)} practice questions into Neon DB!")
+            print(f"      [OK] Inserted {len(practice_list)} practice questions into Neon DB!")
         else:
-            print(f"      ℹ️ Practice Questions already exist ({existing_pq_count} found).")
+            print(f"      [INFO] Practice Questions already exist ({existing_pq_count} found).")
 
         # 4. Seed / Sync Coding Problems
         print("\n[4/5] Syncing Coding Problems (Authentic LeetCode DSA Sheet)...")
@@ -114,11 +121,11 @@ def sync_data(database_url: str):
             if new_problems:
                 db.bulk_save_objects(new_problems)
                 db.commit()
-                print(f"      ✅ Added {len(new_problems)} new coding problems! Total: {len(existing_cp_slugs) + len(new_problems)} problems.")
+                print(f"      [OK] Added {len(new_problems)} new coding problems! Total: {len(existing_cp_slugs) + len(new_problems)} problems.")
             else:
-                print(f"      ℹ️ All {len(existing_cp_slugs)} coding problems are already up-to-date in Neon DB.")
+                print(f"      [INFO] All {len(existing_cp_slugs)} coding problems are already up-to-date in Neon DB.")
         else:
-            print(f"      ⚠️ {coding_file} not found. Skipped.")
+            print(f"      [WARN] {coding_file} not found. Skipped.")
 
         # 5. Create Admin Account
         print("\n[5/5] Ensuring Admin Account...")
@@ -134,31 +141,31 @@ def sync_data(database_url: str):
             db.add(admin)
             db.commit()
             db.refresh(admin)
-            print(f"      ✅ Created Admin User '{admin_email}' (password: password123).")
+            print(f"      [OK] Created Admin User '{admin_email}' (password: password123).")
         else:
             if not admin.is_admin:
                 admin.is_admin = True
                 db.commit()
-                print(f"      ✅ Updated '{admin_email}' with is_admin = True.")
+                print(f"      [OK] Updated '{admin_email}' with is_admin = True.")
             else:
-                print(f"      ℹ️ Admin user '{admin_email}' already configured.")
+                print(f"      [INFO] Admin user '{admin_email}' already configured.")
 
         # Summary
         final_pq = db.query(PracticeQuestion).count()
         final_cp = db.query(CodingProblem).count()
 
         print("\n" + "=" * 60)
-        print("🎉 NEON DB SYNC COMPLETE!")
+        print("[COMPLETE] NEON DB SYNC SUCCESSFUL!")
         print("=" * 60)
-        print(f"  • Practice Questions in Neon: {final_pq}")
-        print(f"  • Coding Problems in Neon:    {final_cp}")
-        print(f"  • Admin User:                 {admin_email} (is_admin: True)")
-        print("\nNow set this connection string as DATABASE_URL in your Render backend!")
+        print(f"  * Practice Questions in Neon: {final_pq}")
+        print(f"  * Coding Problems in Neon:    {final_cp}")
+        print(f"  * Admin User:                 {admin_email} (is_admin: True)")
+        print("\nNext step: Set this connection string as DATABASE_URL in your Render backend!")
         print("=" * 60)
 
     except Exception as e:
         db.rollback()
-        print(f"\n❌ Error during data sync: {e}")
+        print(f"\n[ERROR] Error during data sync: {e}")
         sys.exit(1)
     finally:
         db.close()
