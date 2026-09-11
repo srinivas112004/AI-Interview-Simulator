@@ -22,8 +22,8 @@ if GEMINI_API_KEY:
 
 
 GEMINI_MODEL_CANDIDATES = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
 ]
 
 
