@@ -577,7 +577,7 @@ def evaluate_answer(
                 ref_info += f"\nCONCEPT EXPLANATION & KEY CONCEPTS:\n{explanation}"
 
             prompt = f"""
-            You are a senior technical interviewer for a {role} position.
+            You are a strict but fair senior technical interviewer for a {role} position.
             Evaluate the candidate's answer to the following practice interview question.
 
             QUESTION ({category}, Difficulty: {difficulty}):
@@ -587,19 +587,23 @@ def evaluate_answer(
             CANDIDATE ANSWER:
             "{user_answer}"
 
-            Evaluation Guidelines:
-            1. Assess technical accuracy, conceptual correctness, and relevance.
-            2. If reference / sample answer is provided, check whether the candidate captures the key points or core concepts.
+            STRICT Evaluation Guidelines:
+            1. Assess technical accuracy, conceptual correctness, and relevance to the question.
+            2. If a reference/sample answer is provided, check whether the candidate captures the key points or core concepts.
             3. DO NOT penalize conciseness! A clear, concise, accurate answer (even 1-2 sentences) SHOULD receive a high score (8.0 to 10.0).
-            4. If the candidate correctly states the difference, definition, or premise, score MUST be >= 7.5.
-            5. Only assign a low or failing score (< 6.5) if the answer is factually incorrect, completely irrelevant, or severely misleading.
+            4. If the candidate correctly states the difference, definition, or core premise, score MUST be >= 7.5.
+            5. Score 0.0 if the answer is completely irrelevant gibberish, random text, spam, or has ZERO relation to the question.
+            6. Score 1.0-3.0 if the answer is factually wrong, severely misleading, or demonstrates no understanding.
+            7. Score 4.0-6.0 if the answer is partially correct but missing major concepts.
+            8. Score 7.0-8.0 for good answers that cover the core concept.
+            9. Score 8.5-10.0 for excellent, comprehensive answers.
 
             Evaluate thoroughly and return valid JSON ONLY with this exact schema:
             {{
-              "score": <float between 1.0 and 10.0, where >= 6.5 is passing/correct>,
-              "technical_correctness": <float between 1.0 and 10.0>,
-              "relevance": <float between 1.0 and 10.0>,
-              "completeness": <float between 1.0 and 10.0>,
+              "score": <float between 0.0 and 10.0>,
+              "technical_correctness": <float between 0.0 and 10.0>,
+              "relevance": <float between 0.0 and 10.0>,
+              "completeness": <float between 0.0 and 10.0>,
               "strengths": ["Clear strength 1", "Strength 2"],
               "weaknesses": ["Weakness or missing concept 1"],
               "better_answer": "A concise, industry-standard model answer that scores 10/10.",
