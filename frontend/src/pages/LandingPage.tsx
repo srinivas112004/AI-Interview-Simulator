@@ -132,7 +132,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="font-bold text-lg text-slate-900 mb-2">LeetCode Coding Sandbox</h3>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Monaco Code Editor with Python, Java, and JavaScript support. Run test cases and submit with Judge0 API execution.
+              Monaco Code Editor with Python and JavaScript support. Run test cases and submit with Judge0 API execution.
             </p>
           </div>
 

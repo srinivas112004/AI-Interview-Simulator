@@ -30,7 +30,6 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 const LANGUAGES = [
   { id: 'python', label: 'Python 3', monaco: 'python' },
   { id: 'javascript', label: 'JavaScript (Node)', monaco: 'javascript' },
-  { id: 'java', label: 'Java (OpenJDK)', monaco: 'java' },
 ];
 
 const cleanDisplayText = (text?: string): string => {
@@ -59,7 +58,7 @@ export const CodingPage: React.FC = () => {
   const [difficultyFilter, setDifficultyFilter] = useState('All');
 
   // Editor & Runner State
-  const [language, setLanguage] = useState<'python' | 'javascript' | 'java'>('python');
+  const [language, setLanguage] = useState<'python' | 'javascript'>('python');
   const [code, setCode] = useState<string>('');
   const [customInput, setCustomInput] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
@@ -135,7 +134,7 @@ export const CodingPage: React.FC = () => {
     }
   };
 
-  const handleLanguageChange = (newLang: 'python' | 'javascript' | 'java') => {
+  const handleLanguageChange = (newLang: 'python' | 'javascript') => {
     setLanguage(newLang);
     if (selectedProblem?.starter_templates?.[newLang]) {
       setCode(selectedProblem.starter_templates[newLang]);
@@ -610,7 +609,7 @@ export const CodingPage: React.FC = () => {
               <span className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
                 <span>
-                  Solution.{language === 'python' ? 'py' : language === 'javascript' ? 'js' : 'java'}
+                  Solution.{language === 'python' ? 'py' : 'js'}
                 </span>
               </span>
               <span className="text-[11px] text-slate-400 font-sans">
