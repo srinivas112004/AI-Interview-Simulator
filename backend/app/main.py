@@ -14,16 +14,26 @@ from .routes import (
     analytics,
     admin,
 )
+import threading
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize database tables
-    Base.metadata.create_all(bind=engine)
+def _init_db_background():
+    """Run DB init and seeding in background so the server binds the port immediately."""
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("[Startup] Database tables initialized.")
+    except Exception as e:
+        print(f"[Startup] DB init notice: {e}")
     try:
         from seed_data import seed_database
         seed_database()
     except Exception as e:
         print(f"[Startup] Seeding notice: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run DB init in background thread so Render port binding isn't blocked
+    thread = threading.Thread(target=_init_db_background, daemon=True)
+    thread.start()
     yield
 
 app = FastAPI(
