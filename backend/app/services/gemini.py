@@ -22,8 +22,10 @@ if GEMINI_API_KEY:
 
 
 GEMINI_MODEL_CANDIDATES = [
-    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
+    "gemini-flash-latest",
 ]
 
 
@@ -36,30 +38,43 @@ def _get_gemini_model():
             return genai_client.GenerativeModel(model_name)
         except Exception:
             continue
-    return genai_client.GenerativeModel("gemini-flash-latest")
+    return genai_client.GenerativeModel("gemini-2.5-flash")
 
 
-def _generate_gemini_content(prompt: str, timeout_seconds: int = 12) -> Optional[str]:
+def _generate_gemini_content(prompt: str, timeout_seconds: int = 18, is_json: bool = False) -> Optional[str]:
     """
     Attempts content generation across candidate models in priority order.
-    Each model attempt is limited to timeout_seconds to avoid hanging on Render.
-    Automatically catches rate limit (429), not-found (404), or other model errors
-    and fails over to the next candidate model before returning None.
+    Prioritizes fast, high-quota models (gemini-2.5-flash, gemini-3.5-flash-lite).
+    Configures response_mime_type="application/json" when JSON is expected to guarantee valid formatting.
+    Catches rate limits (429), timeouts, or errors and fails over seamlessly.
     """
     if not genai_client or not GEMINI_API_KEY:
         return None
 
     last_error = None
+    gen_config = {"temperature": 0.2}
+    if is_json or "json" in prompt.lower():
+        gen_config["response_mime_type"] = "application/json"
+
     for model_name in GEMINI_MODEL_CANDIDATES:
         result_holder = [None]
         error_holder = [None]
 
         def _call_model():
             try:
-                model = genai_client.GenerativeModel(model_name)
+                model = genai_client.GenerativeModel(model_name, generation_config=gen_config)
                 response = model.generate_content(prompt)
-                if response and response.text:
-                    result_holder[0] = response.text
+                if response:
+                    text = None
+                    try:
+                        text = response.text
+                    except Exception:
+                        if hasattr(response, "candidates") and response.candidates:
+                            parts = getattr(response.candidates[0].content, "parts", [])
+                            if parts and hasattr(parts[0], "text"):
+                                text = parts[0].text
+                    if text:
+                        result_holder[0] = text
             except Exception as e:
                 error_holder[0] = e
 
@@ -85,15 +100,25 @@ def _generate_gemini_content(prompt: str, timeout_seconds: int = 12) -> Optional
 
 
 def _clean_json_response(raw_text: str) -> str:
-    """Strip markdown code fences if Gemini wraps JSON in ```json ... ```"""
-    raw_text = raw_text.strip()
-    if raw_text.startswith("```json"):
-        raw_text = raw_text[7:]
-    elif raw_text.startswith("```"):
-        raw_text = raw_text[3:]
-    if raw_text.endswith("```"):
-        raw_text = raw_text[:-3]
-    return raw_text.strip()
+    """Strip markdown code fences and extract valid JSON object from response."""
+    if not raw_text:
+        return ""
+    text = raw_text.strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    # If wrapped in non-JSON explanation, extract substring from first { to last }
+    if not text.startswith("{") and "{" in text:
+        start_idx = text.find("{")
+        end_idx = text.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            text = text[start_idx:end_idx + 1]
+    return text.strip()
 
 
 def analyze_communication(user_answer: str, duration_seconds: int = 45) -> Dict[str, Any]:
